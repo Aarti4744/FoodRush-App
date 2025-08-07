@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-
+import 'package:shared_preferences/shared_preferences.dart';
 import 'LocationPermissionScreen.dart';
+// Import your ApiService here
+// import '../services/api_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -77,20 +79,96 @@ class _LoginScreenState extends State<LoginScreen>
 
   bool get _isFormValid => _isEmailValid && _isPasswordValid;
 
+  // Save user data to SharedPreferences
+  Future<void> _saveUserData({
+    required String token,
+    required Map<String, dynamic> user,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('auth_token', token);
+    await prefs.setString('user_id', user['id'].toString());
+    await prefs.setString('user_name', user['name'] ?? '');
+    await prefs.setString('user_email', user['email'] ?? '');
+    await prefs.setBool('is_logged_in', true);
+  }
+
   Future<void> _login() async {
     if (!_isFormValid) return;
+
     setState(() => _isLoading = true);
 
+    try {
+      // Call your API service here
+      // Replace this with: ApiService.loginUser(...)
+      final result = await _mockApiCall();
+
+      setState(() => _isLoading = false);
+
+      if (result['success']) {
+        // Save user data
+        await _saveUserData(
+          token: result['token'],
+          user: result['user'],
+        );
+
+        // Show success message
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['message'] ?? 'Login successful! 🎉'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+
+          // Navigate to next screen
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const LocationPermissionScreen()),
+          );
+        }
+      } else {
+        // Show error message
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['message'] ?? 'Login failed. Please try again.'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Network error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  // Mock API call - Replace this with actual ApiService.loginUser call
+  Future<Map<String, dynamic>> _mockApiCall() async {
     await Future.delayed(const Duration(seconds: 2));
 
-    setState(() => _isLoading = false);
-
-    if (mounted) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const LocationPermissionScreen()),
-      );
-    }
+    // Simulate successful login response
+    return {
+      'success': true,
+      'message': 'Login successful (hybrid authentication)',
+      'user': {
+        'id': 6,
+        'name': 'Aarti',
+        'email': _emailController.text.trim(),
+      },
+      'token': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6NiwiZW1haWwiOiJwb3lvYjg0MDY0QGFodmluLmNvbSIsIm5hbWUiOiJBYXJ0aSIsImlhdCI6MTc1NDU2MDQ2NywiZXhwIjoxNzU0NjQ2ODY3fQ.lZg9YtrYeHtQ_epRY25TUeLCzJpEaQdEBkTmEgjzOHw',
+      'validationMethod': 'Bearer token + Email/Password'
+    };
   }
 
   void _socialLogin(String provider) {

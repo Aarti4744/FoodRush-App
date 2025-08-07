@@ -13,12 +13,15 @@ import '../screens/intro.dart';
 import '../screens/splash/splash_screen.dart';
 
 final Map<String, WidgetBuilder> appRoutes = {
-  '/': (context) => const SplashScreen(),
+  '/': (context) => const LoginScreen(),
   '/intro': (context) => const IntroScreen(),
   '/home': (context) => const HomeScreen(),
   '/sendOtp': (context) => const SendOTPScreen(),
-  '/otp': (context) => const OTPVerificationScreen(phoneNumber: ''),
-  '/signup': (context) => const SignupScreen(),
+  '/otp': (context) {
+    final email = ModalRoute.of(context)?.settings.arguments as String? ?? '';
+    return OTPVerificationScreen(email: email);
+  },
+  '/signup': (context) => const SignupScreen(), // Direct registration with API
   '/login': (context) => const LoginScreen(),
   '/forgotPassword': (context) => const ForgotPasswordScreen(),
   '/forgotPasswordOtp': (context) {
@@ -29,5 +32,5 @@ final Map<String, WidgetBuilder> appRoutes = {
     final phoneNumber = ModalRoute.of(context)?.settings.arguments as String? ?? '';
     return ResetPasswordScreen(phoneNumber: phoneNumber);
   },
-  '/location': (context) => const LocationPermissionScreen(), // <-- Added
+  '/location': (context) => const LocationPermissionScreen(),
 };

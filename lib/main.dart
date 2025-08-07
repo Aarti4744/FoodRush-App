@@ -13,7 +13,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       initialRoute: '/',
-      routes: appRoutes, // ✅ This is required
+      routes: appRoutes,
     );
   }
 }

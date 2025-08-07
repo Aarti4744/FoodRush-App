@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'OtpVerificationScreen.dart';
 
 class SendOTPScreen extends StatefulWidget {
@@ -11,7 +13,7 @@ class SendOTPScreen extends StatefulWidget {
 
 class _SendOTPScreenState extends State<SendOTPScreen>
     with TickerProviderStateMixin {
-  final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
 
   late AnimationController _animationController;
   late AnimationController _pulseController;
@@ -21,6 +23,9 @@ class _SendOTPScreenState extends State<SendOTPScreen>
 
   bool _isValid = false;
   bool _isLoading = false;
+
+  // API Base URL - Update this with your actual server URL
+  static const String baseUrl = 'http://localhost:3000'; // Change this to your server URL
 
   @override
   void initState() {
@@ -64,9 +69,9 @@ class _SendOTPScreenState extends State<SendOTPScreen>
     _pulseController.repeat(reverse: true);
   }
 
-  void _validatePhone(String value) {
+  void _validateEmail(String value) {
     setState(() {
-      _isValid = RegExp(r'^[0-9]{10}$').hasMatch(value);
+      _isValid = RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value);
     });
   }
 
@@ -75,25 +80,66 @@ class _SendOTPScreenState extends State<SendOTPScreen>
 
     setState(() => _isLoading = true);
 
-    // Simulate API call
-    await Future.delayed(const Duration(seconds: 1));
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/send-otp'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          'email': _emailController.text.trim(),
+        }),
+      );
 
-    setState(() => _isLoading = false);
+      setState(() => _isLoading = false);
 
-    if (mounted) {
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
 
-
-      // Navigate to OTP verification screen
-      Future.delayed(const Duration(milliseconds: 500), () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => OTPVerificationScreen(
-              phoneNumber: '+91 ${_phoneController.text}',
+        if (mounted) {
+          // Show success message
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(responseData['message'] ?? 'OTP sent successfully! 📧'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
             ),
+          );
+
+          // Navigate to OTP verification screen
+          Future.delayed(const Duration(milliseconds: 500), () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => OTPVerificationScreen(
+                  email: _emailController.text.trim(),
+                ),
+              ),
+            );
+          });
+        }
+      } else {
+        // Handle error response
+        final errorData = json.decode(response.body);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errorData['message'] ?? 'Failed to send OTP'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Network error: ${e.toString()}'),
+            backgroundColor: Colors.red,
           ),
         );
-      });
+      }
     }
   }
 
@@ -101,7 +147,7 @@ class _SendOTPScreenState extends State<SendOTPScreen>
   void dispose() {
     _animationController.dispose();
     _pulseController.dispose();
-    _phoneController.dispose();
+    _emailController.dispose();
     super.dispose();
   }
 
@@ -153,7 +199,7 @@ class _SendOTPScreenState extends State<SendOTPScreen>
                                         shape: BoxShape.circle,
                                       ),
                                       child: Icon(
-                                        Icons.phone_android,
+                                        Icons.email_outlined,
                                         size: 60,
                                         color: Colors.orange.shade600,
                                       ),
@@ -163,7 +209,7 @@ class _SendOTPScreenState extends State<SendOTPScreen>
                               ),
                               const SizedBox(height: 24),
                               Text(
-                                "Enter your phone number",
+                                "Enter your email",
                                 style: TextStyle(
                                   fontSize: 26,
                                   fontWeight: FontWeight.bold,
@@ -172,7 +218,7 @@ class _SendOTPScreenState extends State<SendOTPScreen>
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                "We'll send you a 6-digit verification code\nto confirm your number",
+                                "We'll send you a 6-digit verification code\nto confirm your email address",
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   fontSize: 16,
@@ -182,27 +228,21 @@ class _SendOTPScreenState extends State<SendOTPScreen>
                               ),
                               const SizedBox(height: 40),
                               TextFormField(
-                                controller: _phoneController,
-                                keyboardType: TextInputType.phone,
-                                maxLength: 10,
+                                controller: _emailController,
+                                keyboardType: TextInputType.emailAddress,
                                 style: const TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.w500,
                                 ),
-                                inputFormatters: [
-                                  FilteringTextInputFormatter.digitsOnly,
-                                ],
                                 decoration: InputDecoration(
-                                  labelText: 'Phone Number',
+                                  labelText: 'Email Address',
                                   labelStyle: TextStyle(
                                     color: Colors.grey.shade600,
                                     fontSize: 16,
                                   ),
-                                  prefixText: '+91 ',
-                                  prefixStyle: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w500,
-                                    color: Colors.grey.shade700,
+                                  prefixIcon: Icon(
+                                    Icons.email_outlined,
+                                    color: Colors.grey.shade600,
                                   ),
                                   border: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(12),
@@ -223,18 +263,23 @@ class _SendOTPScreenState extends State<SendOTPScreen>
                                       color: Colors.grey.shade300,
                                     ),
                                   ),
+                                  errorBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                      color: Colors.red.shade400,
+                                    ),
+                                  ),
                                   filled: true,
                                   fillColor: Colors.white,
                                   contentPadding: const EdgeInsets.symmetric(
                                     horizontal: 16,
                                     vertical: 16,
                                   ),
-                                  counterText: '',
                                 ),
-                                onChanged: _validatePhone,
+                                onChanged: _validateEmail,
                                 onTap: () {
-                                  _phoneController.selection = TextSelection.fromPosition(
-                                    TextPosition(offset: _phoneController.text.length),
+                                  _emailController.selection = TextSelection.fromPosition(
+                                    TextPosition(offset: _emailController.text.length),
                                   );
                                 },
                               ),

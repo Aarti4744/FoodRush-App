@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'dart:async';
+import 'dart:convert';
 
 import 'SignUpScreen.dart';
 
-
 class OTPVerificationScreen extends StatefulWidget {
-  final String phoneNumber;
+  final String email;
 
   const OTPVerificationScreen({
     Key? key,
-    required this.phoneNumber,
+    required this.email,
   }) : super(key: key);
 
   @override
@@ -34,6 +35,9 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen>
   bool _canResend = false;
   bool _isLoading = false;
   String _currentOTP = '';
+
+  // API Base URL - Update this with your actual server URL
+  static const String baseUrl = 'http://localhost:3000'; // Change this to your server URL
 
   @override
   void initState() {
@@ -108,36 +112,135 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen>
   }
 
   Future<void> _verifyOTP() async {
+    if (_currentOTP.length != 6) return;
+
     setState(() => _isLoading = true);
-    await Future.delayed(const Duration(seconds: 2));
-    setState(() => _isLoading = false);
 
-
-    // Navigate to SignupScreen after showing snackbar
-    Future.delayed(const Duration(milliseconds: 500), () {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const SignupScreen()),
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/verify-otp'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          'email': widget.email,
+          'otp': _currentOTP,
+        }),
       );
-    });
+
+      setState(() => _isLoading = false);
+
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
+
+        if (mounted) {
+          // Show success message
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(responseData['message'] ?? 'OTP verified successfully! ✅'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+
+          // Navigate to SignupScreen after showing snackbar
+          Future.delayed(const Duration(milliseconds: 500), () {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const SignupScreen(), // Removed verifiedEmail parameter
+              ),
+            );
+          });
+        }
+      } else {
+        // Handle error response
+        final errorData = json.decode(response.body);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errorData['message'] ?? 'Invalid OTP. Please try again.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          // Clear the OTP fields
+          _clearOTPFields();
+        }
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Network error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        // Clear the OTP fields
+        _clearOTPFields();
+      }
+    }
+  }
+
+  void _clearOTPFields() {
+    for (var controller in _controllers) {
+      controller.clear();
+    }
+    setState(() => _currentOTP = '');
+    _focusNodes[0].requestFocus();
   }
 
   Future<void> _resendOTP() async {
     if (!_canResend) return;
 
-    setState(() {
-      _resendCountdown = 30;
-      _canResend = false;
-    });
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/send-otp'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          'email': widget.email,
+        }),
+      );
 
-    _startCountdown();
+      if (response.statusCode == 200) {
+        setState(() {
+          _resendCountdown = 30;
+          _canResend = false;
+        });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('OTP sent successfully! 📱'),
-        backgroundColor: Colors.orange,
-      ),
-    );
+        _startCountdown();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('OTP sent successfully! 📧'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+      } else {
+        final errorData = json.decode(response.body);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errorData['message'] ?? 'Failed to resend OTP'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Network error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -202,7 +305,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen>
                                         shape: BoxShape.circle,
                                       ),
                                       child: Icon(
-                                        Icons.delivery_dining,
+                                        Icons.mark_email_read_outlined,
                                         size: 60,
                                         color: Colors.orange.shade600,
                                       ),
@@ -212,7 +315,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen>
                               ),
                               const SizedBox(height: 24),
                               Text(
-                                'Verify your number',
+                                'Verify your email',
                                 style: TextStyle(
                                   fontSize: 26,
                                   fontWeight: FontWeight.bold,
@@ -221,7 +324,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen>
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                'We\'ve sent a 6-digit code to\n${widget.phoneNumber}',
+                                'We\'ve sent a 6-digit code to\n${widget.email}',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   fontSize: 16,
@@ -249,9 +352,29 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen>
                                       inputFormatters: [
                                         FilteringTextInputFormatter.digitsOnly,
                                       ],
-                                      decoration: const InputDecoration(
+                                      decoration: InputDecoration(
                                         counterText: '',
-                                        border: OutlineInputBorder(),
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                          borderSide: BorderSide(
+                                            color: Colors.grey.shade300,
+                                          ),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                          borderSide: BorderSide(
+                                            color: Colors.orange.shade600,
+                                            width: 2,
+                                          ),
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                          borderSide: BorderSide(
+                                            color: Colors.grey.shade300,
+                                          ),
+                                        ),
+                                        filled: true,
+                                        fillColor: Colors.white,
                                       ),
                                       onChanged: (value) {
                                         _onOTPChanged(value, index);

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'SendOtpScreen.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -15,6 +17,7 @@ class _SignupScreenState extends State<SignupScreen>
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _confirmPasswordController = TextEditingController();
 
   late AnimationController _animationController;
   late AnimationController _pulseController;
@@ -26,8 +29,13 @@ class _SignupScreenState extends State<SignupScreen>
   bool _isEmailValid = false;
   bool _isPhoneValid = false;
   bool _isPasswordValid = false;
+  bool _isConfirmPasswordValid = false;
   bool _isLoading = false;
   bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
+
+  // API Base URL - Update this with your actual server URL
+  static const String baseUrl = 'http://localhost:3000'; // Change this to your server URL
 
   @override
   void initState() {
@@ -79,34 +87,77 @@ class _SignupScreenState extends State<SignupScreen>
           .hasMatch(_emailController.text.trim());
       _isPhoneValid = RegExp(r'^[0-9]{10}$').hasMatch(_phoneController.text.trim());
       _isPasswordValid = _passwordController.text.trim().length >= 6;
+      _isConfirmPasswordValid = _confirmPasswordController.text.trim().isNotEmpty &&
+          _confirmPasswordController.text == _passwordController.text;
     });
   }
 
   bool get _isFormValid =>
-      _isNameValid && _isEmailValid && _isPhoneValid && _isPasswordValid;
+      _isNameValid && _isEmailValid && _isPhoneValid && _isPasswordValid && _isConfirmPasswordValid;
 
-  Future<void> _onSignup() async {
+  Future<void> _registerUser() async {
     if (!_isFormValid) return;
 
     setState(() => _isLoading = true);
 
-    // Simulate API call
-    await Future.delayed(const Duration(seconds: 1));
-
-    setState(() => _isLoading = false);
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Account created successfully! 🎉'),
-          backgroundColor: Colors.green,
-        ),
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/register'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          'name': _nameController.text.trim(),
+          'email': _emailController.text.trim(),
+          'password': _passwordController.text,
+          'confirmPassword': _confirmPasswordController.text,
+        }),
       );
 
-      // Navigate to login screen after a short delay
-      Future.delayed(const Duration(milliseconds: 500), () {
-        Navigator.pushReplacementNamed(context, '/login');
-      });
+      setState(() => _isLoading = false);
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final responseData = json.decode(response.body);
+
+        if (mounted) {
+          // Show success message
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(responseData['message'] ?? 'Account created successfully! 🎉'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+
+          // Navigate to login screen after a short delay
+          Future.delayed(const Duration(milliseconds: 500), () {
+            Navigator.pushReplacementNamed(context, '/login');
+          });
+        }
+      } else {
+        // Handle error response
+        final errorData = json.decode(response.body);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errorData['message'] ?? 'Registration failed. Please try again.'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Network error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 
@@ -188,6 +239,7 @@ class _SignupScreenState extends State<SignupScreen>
     _emailController.dispose();
     _phoneController.dispose();
     _passwordController.dispose();
+    _confirmPasswordController.dispose();
     super.dispose();
   }
 
@@ -320,6 +372,28 @@ class _SignupScreenState extends State<SignupScreen>
                                   },
                                 ),
                               ),
+                              const SizedBox(height: 16),
+
+                              // Confirm Password Field
+                              _buildTextField(
+                                controller: _confirmPasswordController,
+                                labelText: 'Confirm Password',
+                                isValid: _isConfirmPasswordValid,
+                                obscureText: _obscureConfirmPassword,
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    _obscureConfirmPassword
+                                        ? Icons.visibility_off
+                                        : Icons.visibility,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      _obscureConfirmPassword = !_obscureConfirmPassword;
+                                    });
+                                  },
+                                ),
+                              ),
                               const SizedBox(height: 24),
 
                               Text(
@@ -342,7 +416,7 @@ class _SignupScreenState extends State<SignupScreen>
                             width: double.infinity,
                             height: 56,
                             child: ElevatedButton(
-                              onPressed: _isFormValid && !_isLoading ? _onSignup : null,
+                              onPressed: _isFormValid && !_isLoading ? _registerUser : null,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.orange.shade600,
                                 foregroundColor: Colors.white,
